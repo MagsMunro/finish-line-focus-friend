@@ -1,16 +1,15 @@
 # Finish Line Friend
 
-A calm study and homework planning partner for students.
+Tell it what you have to do and when it’s due. It figures out when you should do it and keeps adjusting until you reach 100%.
 
 ## Features
 
-- **Setup screen** — name, class schedule (period + optional teacher), homework availability, commitments
-- **Add Homework form** — class dropdown, dates, type, time, difficulty; reading fields + paste/upload
-- **Today’s Plan** — personalized schedule with visible reading/comprehension gates
-- **Comprehension gates** — reading complete ≠ assignment complete; Pending / Passed / Review needed
-- **Chat** — for “what’s next?”, “I’m behind”, checkpoints, etc. (not for entering classes/homework)
-- **Focus Music** — optional local calm tone (off by default, no autoplay)
-- Progress meter and points
+- **Setup** — name, classes/periods, get-home time, homework window, recurring commitments
+- **Add Homework** — class, assignment, due date/time, estimated minutes, difficulty, notes
+- **Today’s Plan** — realistic schedule from deadlines, workload, difficulty, free time, and breaks
+- **Finish Line bars** — each class shows semester progress (first day through last day); completing work moves the bar forward and it does not reset daily
+- **Chat** — “what’s next?”, “I’m behind”, “I only have 45 minutes”, “I finished early”, “Can I stop for today?”
+- **Focus Music** — optional local calm tone (off by default)
 
 ## Run
 
@@ -22,6 +21,7 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173).
 
 ## Flow
 
-1. Complete the setup form once (saved in the browser)
+1. Complete setup once (saved in the browser)
 2. Tap **Add Homework** when you get an assignment
-3. Follow **Today’s Plan**; use chat for questions and reading checkpoints
+3. Follow **Today’s Plan**; check off work as you finish it
+4. Ask chat to reshape the plan when time or priorities change

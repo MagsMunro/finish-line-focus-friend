@@ -43,7 +43,7 @@
               </div>
               <div id="class-rows" class="class-rows"></div>
             </div>
-            <button type="button" id="add-class-btn" class="btn-secondary">Add another class</button>
+            <button type="button" id="add-class-btn" class="btn-secondary">Add a class</button>
           </section>
 
           <section class="form-section">
@@ -70,6 +70,16 @@
                 placeholder="e.g. Soccer Tue/Thu 4:00–6:00 PM, work Wed 5–8 PM"
               ></textarea>
             </label>
+            <div class="field-grid">
+              <label class="field">
+                <span>Semester starts</span>
+                <input id="setup-semester-start" type="date" required />
+              </label>
+              <label class="field">
+                <span>Semester ends</span>
+                <input id="setup-semester-end" type="date" required />
+              </label>
+            </div>
           </section>
 
           <p id="setup-error" class="form-error" hidden></p>
@@ -82,13 +92,13 @@
       <header class="top-bar">
         <div class="brand">
           <p class="brand-name">Finish Line Friend</p>
-          <p class="brand-sub">A calm partner for homework, plans, and real understanding</p>
+          <p class="brand-sub">Tell it what you have to do — it figures out when, and keeps adjusting until you hit 100%</p>
         </div>
         <div
           id="class-progress"
           class="status class-progress"
           aria-live="polite"
-          aria-label="Class completion"
+          aria-label="Semester finish line by class"
         ></div>
       </header>
 
@@ -115,13 +125,8 @@
               id="chat-input"
               type="text"
               autocomplete="off"
-              placeholder="Ask what’s next, if you’re behind, or about a checkpoint…"
+              placeholder="What’s next? I’m behind. I only have 45 minutes…"
             />
-            <label class="attach-btn" title="Upload a text file for comprehension">
-              <span class="sr-only">Upload reading text</span>
-              <input id="file-input" type="file" accept=".txt,text/plain" hidden />
-              <span aria-hidden="true">Text</span>
-            </label>
             <button type="submit">Send</button>
           </form>
         </section>
@@ -129,17 +134,12 @@
         <aside class="plan-panel" aria-label="Today’s Plan">
           <h2>Today’s Plan</h2>
           <p class="plan-hint">
-            For reading: finish the session, then a short Quick Check. Reading the pages isn’t the same as understanding them.
+            Check off work as you finish it. Your plan reshuffles when deadlines, time, or remaining work change.
           </p>
           <ol id="plan-list" class="plan-list"></ol>
           <p id="empty-plan" class="empty-plan">
-            No plan yet. Use <strong>Add Homework</strong> when you get an assignment.
+            No plan yet. Tap <strong>Add Homework</strong> to enter an assignment.
           </p>
-
-          <div id="reading-status" class="reading-status" hidden>
-            <h3>Reading &amp; Quick Check</h3>
-            <ul id="reading-status-list" class="reading-status-list"></ul>
-          </div>
 
           <div id="backlog" class="backlog" hidden>
             <h3>Later this week</h3>
@@ -149,25 +149,7 @@
       </main>
     </div>
 
-    <!-- Visible comprehension checkpoint panel -->
-    <div id="checkpoint-panel" class="checkpoint-panel" hidden>
-      <div class="checkpoint-card">
-        <div class="checkpoint-head">
-          <div>
-            <p class="checkpoint-kicker">Quick Check</p>
-            <h2 id="cp-title">Quick Check</h2>
-            <p id="cp-meta" class="checkpoint-meta"></p>
-          </div>
-          <button type="button" id="cp-close" class="icon-close" aria-label="Close checkpoint">×</button>
-        </div>
-        <div id="cp-badges" class="status-badges"></div>
-        <p id="cp-progress" class="cp-progress"></p>
-        <div id="cp-body" class="cp-body"></div>
-        <div id="cp-actions" class="cp-actions"></div>
-      </div>
-    </div>
-
-    <!-- Add Homework modal -->
+    <!-- Add Homework -->
     <div id="hw-modal" class="modal" hidden>
       <div class="modal-backdrop" data-close-modal></div>
       <div class="modal-card" role="dialog" aria-labelledby="hw-modal-title" aria-modal="true">
@@ -181,17 +163,13 @@
             <select id="hw-class" required></select>
           </label>
           <label class="field">
-            <span>Assignment name</span>
-            <input id="hw-title" type="text" required placeholder="Chapters 4–6 reading" />
+            <span>Assignment</span>
+            <input id="hw-title" type="text" required placeholder="e.g. Chapter 4 worksheet" />
           </label>
           <div class="field-grid">
             <label class="field">
-              <span>Date assigned</span>
-              <input id="hw-assigned" type="date" required />
-            </label>
-            <label class="field">
               <span>Due date</span>
-              <input id="hw-due" type="date" required />
+              <input id="hw-due" type="date" required autocomplete="off" />
             </label>
             <label class="field">
               <span>Due time <em>(optional)</em></span>
@@ -199,18 +177,6 @@
             </label>
           </div>
           <div class="field-grid">
-            <label class="field">
-              <span>Type</span>
-              <select id="hw-type" required>
-                <option value="reading">Reading</option>
-                <option value="writing">Writing</option>
-                <option value="problem-set">Problem Set</option>
-                <option value="studying">Studying</option>
-                <option value="project">Project</option>
-                <option value="practice">Practice</option>
-                <option value="other">Other</option>
-              </select>
-            </label>
             <label class="field">
               <span>Estimated time (minutes)</span>
               <input id="hw-minutes" type="number" min="5" max="600" step="5" required value="45" />
@@ -228,41 +194,15 @@
             <span>Notes <em>(optional)</em></span>
             <textarea id="hw-notes" rows="2" placeholder="Anything else to remember"></textarea>
           </label>
-
-          <div id="reading-fields" class="reading-fields" hidden>
-            <h3>Reading details</h3>
-            <p class="field-hint">Required so we can schedule the reading and run a Quick Check afterward.</p>
-            <label class="field">
-              <span>Book / title</span>
-              <input id="hw-book" type="text" placeholder="e.g. The Great Gatsby" />
-            </label>
-            <label class="field">
-              <span>Chapter(s) or pages</span>
-              <input id="hw-chapters" type="text" placeholder="e.g. Chapters 4–6 or pp. 82–110" />
-            </label>
-            <label class="field">
-              <span>Paste reading for Quick Check <em>(optional now)</em></span>
-              <textarea
-                id="hw-reading-text"
-                rows="5"
-                placeholder="Paste the section you’ll read, or upload a .txt. Questions only use this text."
-              ></textarea>
-            </label>
-            <label class="field file-field">
-              <span>Or upload .txt</span>
-              <input id="hw-reading-file" type="file" accept=".txt,text/plain" />
-            </label>
-          </div>
-
           <p id="hw-error" class="form-error" hidden></p>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
-            <button type="submit" class="btn-primary">Save homework</button>
+            <button type="submit" class="btn-primary">Add to my plan</button>
           </div>
         </form>
       </div>
     </div>
 
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=19"></script>
   </body>
 </html>
