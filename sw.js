@@ -1,5 +1,5 @@
 /* Finish Line Friend — service worker (offline shell + static assets). */
-const CACHE = "finish-line-friend-v1";
+const CACHE = "finish-line-friend-v2";
 const ASSETS = [
   "./",
   "./index.html",
