@@ -44,6 +44,8 @@
     upcoming: [],
     /** Completed plan sessions for today (keeps multi-session checkboxes checked). */
     completedSessions: [],
+    /** Pending conversational confirmation (interpreter ↔ engine bridge). */
+    chat: { pending: null },
   };
 
   const els = {
@@ -68,6 +70,8 @@
     classProgress: document.getElementById("class-progress"),
     musicToggle: document.getElementById("music-toggle"),
     musicVolume: document.getElementById("music-volume"),
+    tonightPeek: document.getElementById("tonight-peek"),
+    tonightDrawer: document.getElementById("tonight-drawer"),
   };
 
   const focusMusic = {
@@ -686,6 +690,46 @@
     els.hwModal.hidden = true;
   }
 
+  /**
+   * Deterministic engine entry for creating an assignment.
+   * Used by the homework form and the conversational layer.
+   */
+  function addAssignment({
+    classId,
+    title,
+    dueDate,
+    dueTimeMin = null,
+    minutes,
+    difficulty = "medium",
+    notes = "",
+  }) {
+    if (!classId || !title || !dueDate) {
+      return { error: "Class, title, and due date are required." };
+    }
+    const mins = Number(minutes);
+    if (!Number.isFinite(mins) || mins < 5) {
+      return { error: "Estimated minutes must be at least 5." };
+    }
+    const roundedMinutes = Math.max(5, Math.min(600, roundUp(mins, 5)));
+    const assignment = {
+      id: uid(),
+      classId,
+      title: String(title).replace(/\s+/g, " ").trim(),
+      assignedDate: isoDate(startOfToday()),
+      dueDate,
+      dueTimeMin: Number.isFinite(dueTimeMin) ? dueTimeMin : null,
+      minutes: roundedMinutes,
+      remainingMinutes: roundedMinutes,
+      difficulty: DIFFICULTY[difficulty] ? difficulty : "medium",
+      notes: notes || "",
+      done: false,
+      progressDate: isoDate(startOfToday()),
+      completedTodayMinutes: 0,
+    };
+    state.assignments.push(assignment);
+    return { assignment };
+  }
+
   function addHomeworkFromForm() {
     const classId = document.getElementById("hw-class")?.value;
     const title = document.getElementById("hw-title")?.value.trim();
@@ -703,37 +747,374 @@
     }
 
     const dueTimeMin = dueTimeRaw ? timeInputToMin(dueTimeRaw) : null;
-    const roundedMinutes = Math.max(5, Math.min(600, roundUp(minutes, 5)));
-
-    const assignment = {
-      id: uid(),
+    const created = addAssignment({
       classId,
       title,
-      assignedDate: isoDate(startOfToday()),
       dueDate,
       dueTimeMin,
-      minutes: roundedMinutes,
-      remainingMinutes: roundedMinutes,
-      difficulty: DIFFICULTY[difficulty] ? difficulty : "medium",
+      minutes,
+      difficulty,
       notes,
-      done: false,
-      progressDate: isoDate(startOfToday()),
-      completedTodayMinutes: 0,
-    };
+    });
+    if (created.error) return created.error;
 
-    state.assignments.push(assignment);
     save();
     const result = buildPlan();
     renderPlan();
     closeHomeworkModal();
 
+    const assignment = created.assignment;
     const cls = classById(assignment.classId);
     const dueLabel =
       formatDue(assignment.dueDate) +
       (assignment.dueTimeMin != null ? ` by ${formatClock(assignment.dueTimeMin)}` : "");
-    const msg = `Added “${assignment.title}” for Period ${cls?.period} — ${cls?.name}. Due ${dueLabel} · ~${roundedMinutes} min.\n\n${formatPlanText(result)}`;
-    addMessage("bot", msg);
+    addMessage(
+      "bot",
+      `Added “${assignment.title}” for ${cls?.name}. Due ${dueLabel}.\n\n${nextActionLine()}`
+    );
     return null;
+  }
+
+  function buildInterpretContext() {
+    return {
+      today: isoDate(startOfToday()),
+      classes: (state.profile?.classes || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        aliases: c.aliases || classAliases(c.name),
+      })),
+      openAssignments: openAssignments().map((a) => ({
+        id: a.id,
+        title: a.title,
+        classId: a.classId,
+        className: classById(a.classId)?.name || "",
+        dueDate: a.dueDate,
+        remainingMinutes: remainingOf(a),
+      })),
+      pending: state.chat?.pending || null,
+    };
+  }
+
+  function nextActionLine() {
+    rebuildAndRender();
+    const block = currentWorkBlock() || state.plan.find((b) => b.type === "work");
+    if (!block) {
+      if (!openAssignments().length) {
+        return "You’re clear — tell me when something new shows up.";
+      }
+      return "Nothing fits cleanly into tonight yet; check Later this week in Tonight’s plan.";
+    }
+    return `Next up: ${block.label} — ${block.detail} (${formatTimeRange(block.start, block.end)}).`;
+  }
+
+  function formatDraftSummary(drafts) {
+    return drafts
+      .map((d, i) => {
+        const due = d.dueDate ? formatDue(d.dueDate) : "due date needed";
+        const cls = d.className || "which class?";
+        return `${i + 1}. ${cls} — ${d.title} · ${due} · ~${d.minutes} min`;
+      })
+      .join("\n");
+  }
+
+  function commitDrafts(drafts) {
+    const added = [];
+    for (const d of drafts) {
+      if (!d.classId || !d.dueDate || !d.title) continue;
+      const created = addAssignment({
+        classId: d.classId,
+        title: d.title,
+        dueDate: d.dueDate,
+        minutes: d.minutes,
+        difficulty: d.difficulty,
+        notes: d.notes || "",
+      });
+      if (created.assignment) added.push(created.assignment);
+    }
+    if (added.length) {
+      save();
+      rebuildAndRender();
+    }
+    return added;
+  }
+
+  async function interpretMessage(text) {
+    const ctx = buildInterpretContext();
+    const api =
+      typeof globalThis.FinishLineInterpreter !== "undefined"
+        ? globalThis.FinishLineInterpreter
+        : null;
+    if (!api) {
+      return {
+        intent: "unknown",
+        confidence: 0,
+        needsConfirmation: false,
+        drafts: [],
+        slots: {},
+      };
+    }
+    return api.interpret(text, ctx);
+  }
+
+  async function handleInterpretation(interpretation, originalText) {
+    const intent = interpretation.intent;
+    const name = state.profile?.name || "there";
+
+    if (intent === "affirm" && state.chat.pending?.type === "confirm_adds") {
+      const drafts = state.chat.pending.drafts || [];
+      state.chat.pending = null;
+      const added = commitDrafts(drafts);
+      if (!added.length) return "I couldn’t add those — try saying the class and due date again.";
+      return `Got it — added ${added.length === 1 ? "it" : `${added.length} things`}.\n${nextActionLine()}`;
+    }
+
+    if (intent === "deny" && state.chat.pending) {
+      state.chat.pending = null;
+      return "Okay, canceled. Tell me what you’ve got whenever you’re ready.";
+    }
+
+    if (intent === "greeting") {
+      return `Hey ${name}. Tell me what’s on your plate — tests, essays, homework, whatever — and I’ll line up tonight.`;
+    }
+
+    if (intent === "help") {
+      return [
+        "Just talk to me like you would a friend who keeps you organized.",
+        "You can say things like:",
+        "• “I have a calc test Friday and a Lit essay due Wednesday”",
+        "• “What should I work on tonight?”",
+        "• “I finished my government assignment”",
+        "• “I’m overwhelmed” / “I only have 45 minutes”",
+        "Need exact fields? Use Add precisely.",
+      ].join("\n");
+    }
+
+    if (intent === "open_form") {
+      openHomeworkModal();
+      return "Opening the precise form — fill it in and I’ll update your plan.";
+    }
+
+    if (intent === "add_work") {
+      const drafts = interpretation.drafts || [];
+      if (!drafts.length) {
+        return (
+          interpretation.clarifyQuestion ||
+          "Tell me the class and when it’s due, and I’ll add it."
+        );
+      }
+
+      if (interpretation.clarifyQuestion && drafts.some((d) => d.missing?.length)) {
+        state.chat.pending = {
+          type: "awaiting_add_slots",
+          drafts,
+          originalText,
+        };
+        return interpretation.clarifyQuestion;
+      }
+
+      const ready = drafts.every((d) => d.classId && d.dueDate && d.title);
+      if (!ready) {
+        state.chat.pending = { type: "confirm_adds", drafts };
+        return `I need a bit more:\n${formatDraftSummary(drafts)}\n\n${
+          interpretation.clarifyQuestion || "Reply with the missing class or due date — or say cancel."
+        }`;
+      }
+
+      if (interpretation.needsConfirmation || drafts.length > 1) {
+        state.chat.pending = { type: "confirm_adds", drafts };
+        return `I’ll add:\n${formatDraftSummary(drafts)}\n\nSound right? (yes / no)`;
+      }
+
+      const added = commitDrafts(drafts);
+      if (!added.length) return "I couldn’t add that — try Add precisely.";
+      const a = added[0];
+      return `Added “${a.title}” for ${classById(a.classId)?.name}, due ${formatDue(a.dueDate)}.\n${nextActionLine()}`;
+    }
+
+    // Follow-up: user supplies missing slot after add clarify
+    if (state.chat.pending?.type === "awaiting_add_slots") {
+      const pendingDrafts = state.chat.pending.drafts || [];
+      const mergedText = `${state.chat.pending.originalText || ""} ${originalText}`;
+      const again = await interpretMessage(mergedText);
+      if (again.intent === "add_work" && again.drafts?.length) {
+        state.chat.pending = null;
+        return handleInterpretation(
+          { ...again, needsConfirmation: again.drafts.length > 1 || again.needsConfirmation },
+          mergedText
+        );
+      }
+      // Try patching due/class onto pending drafts
+      const api = globalThis.FinishLineInterpreter;
+      if (api) {
+        const due = api.extractDueDate(originalText, isoDate(startOfToday()));
+        const classHits = api.findClassesInText(originalText, buildInterpretContext().classes);
+        for (const d of pendingDrafts) {
+          if (!d.dueDate && due.dueDate) {
+            d.dueDate = due.dueDate;
+            d.missing = (d.missing || []).filter((m) => m !== "dueDate");
+          }
+          if (!d.classId && classHits[0]) {
+            d.classId = classHits[0].cls.id;
+            d.className = classHits[0].cls.name;
+            d.missing = (d.missing || []).filter((m) => m !== "class");
+          }
+        }
+        if (pendingDrafts.every((d) => d.classId && d.dueDate)) {
+          state.chat.pending = { type: "confirm_adds", drafts: pendingDrafts };
+          return `I’ll add:\n${formatDraftSummary(pendingDrafts)}\n\nSound right? (yes / no)`;
+        }
+      }
+      return "Still missing a class or due date — one more try, or use Add precisely.";
+    }
+
+    if (intent === "update_due") {
+      if (interpretation.needsConfirmation && interpretation.clarifyQuestion) {
+        return interpretation.clarifyQuestion;
+      }
+      const id = interpretation.slots?.assignmentId;
+      const dueDate = interpretation.slots?.dueDate;
+      const assignment = state.assignments.find((a) => a.id === id);
+      if (!assignment || !dueDate) {
+        return "Tell me which assignment to move and the new due date.";
+      }
+      assignment.dueDate = dueDate;
+      save();
+      rebuildAndRender();
+      return `Updated “${assignment.title}” — now due ${formatDue(dueDate)}.\n${nextActionLine()}`;
+    }
+
+    if (intent === "complete") {
+      if (interpretation.needsConfirmation && interpretation.clarifyQuestion) {
+        return interpretation.clarifyQuestion;
+      }
+      const id = interpretation.slots?.assignmentId;
+      const assignment = state.assignments.find((a) => a.id === id);
+      if (!assignment) return "I couldn’t tell which assignment you finished.";
+      const mins =
+        remainingOf(assignment) ||
+        todayBudgetMinutes(assignment) ||
+        assignment.minutes;
+      completeSession(assignment.id, mins, { fromChat: true });
+      const pct = classCompletion(assignment.classId).pct;
+      return assignment.done
+        ? `Nice — “${assignment.title}” is done. ${classById(assignment.classId)?.name} finish line is at ${pct}%.\n${nextActionLine()}`
+        : `Logged progress on “${assignment.title}.” ${assignment.remainingMinutes} min left.\n${nextActionLine()}`;
+    }
+
+    if (intent === "whats_next") {
+      return nextActionLine();
+    }
+
+    if (intent === "overwhelmed") {
+      const result = buildPlan();
+      renderPlan();
+      const urgent = openAssignments()
+        .filter((a) => daysUntilDue(a.dueDate) <= 1)
+        .sort((a, b) => urgencyScore(a) - urgencyScore(b));
+      if (!urgent.length) {
+        return `You’re not in crisis mode. One thing at a time.\n${nextActionLine()}`;
+      }
+      const top = urgent[0];
+      return [
+        "Okay — we shrink the list.",
+        `Only touch what’s due today or tomorrow. Start with “${top.title}” (${classById(top.classId)?.name}).`,
+        urgent.length > 1
+          ? `After that: ${urgent
+              .slice(1, 3)
+              .map((a) => a.title)
+              .join("; ")}.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    if (intent === "time_box") {
+      const mins = interpretation.slots?.minutes || 30;
+      const open = openAssignments().sort((a, b) => urgencyScore(a) - urgencyScore(b));
+      if (!open.length) return "Nothing on your list yet — tell me what was assigned.";
+      const pick =
+        open.find((a) => remainingOf(a) <= mins + 10) ||
+        open.find((a) => (DIFFICULTY[a.difficulty]?.load || 2) <= 2) ||
+        open[0];
+      return `With ${mins} minutes, do a clean slice of “${pick.title}” (${classById(pick.classId)?.name}). Stop when time’s up.`;
+    }
+
+    if (intent === "stop_today") {
+      return stopForTodayShort();
+    }
+
+    if (intent === "reschedule") {
+      return rescheduleCurrentShort();
+    }
+
+    if (intent === "progress") {
+      return progressShort();
+    }
+
+    if (intent === "show_plan") {
+      const result = buildPlan();
+      renderPlan();
+      if (els.tonightDrawer) els.tonightDrawer.open = true;
+      return `${nextActionLine()}\n\nI opened Tonight’s plan if you want the full list.`;
+    }
+
+    if (intent === "unknown") {
+      if (openAssignments().length) {
+        return `I didn’t catch that. You can tell me new work, that you finished something, or ask what to do tonight.\n${nextActionLine()}`;
+      }
+      return "Tell me what you’ve been assigned — class and due date help — and I’ll set up tonight.";
+    }
+
+    return null;
+  }
+
+  function stopForTodayShort() {
+    const workBlocks = state.plan.filter((b) => b.type === "work");
+    if (!workBlocks.length) return "You’re already clear for tonight.";
+    for (const block of workBlocks) {
+      const a = state.assignments.find((x) => x.id === block.assignmentId);
+      if (!a || a.done) continue;
+      ensureProgressDay(a);
+      a.completedTodayMinutes = (a.completedTodayMinutes || 0) + block.minutes;
+    }
+    save();
+    rebuildAndRender();
+    return "Alright — I cleared the rest of tonight. It’ll come back on later days before it’s due.";
+  }
+
+  function rescheduleCurrentShort() {
+    const block = currentWorkBlock() || state.plan.find((b) => b.type === "work");
+    const a = block
+      ? state.assignments.find((x) => x.id === block.assignmentId)
+      : openAssignments()[0];
+    if (!a) return "Nothing to move.";
+    if (daysUntilDue(a.dueDate) <= 0) {
+      return `“${a.title}” is due today — keep it on tonight’s plan.`;
+    }
+    ensureProgressDay(a);
+    const remaining = remainingOf(a);
+    const dueIn = daysUntilDue(a.dueDate);
+    const skip = Math.max(
+      profileBlock(),
+      dueIn <= 1 ? remaining : Math.ceil(remaining / Math.max(dueIn, 1))
+    );
+    a.completedTodayMinutes = Math.max(a.completedTodayMinutes || 0, skip);
+    save();
+    rebuildAndRender();
+    return `Okay — I won’t schedule more of “${a.title}” tonight.\n${nextActionLine()}`;
+  }
+
+  function progressShort() {
+    const classes = state.profile?.classes || [];
+    if (!classes.length) return "Add your classes in setup first.";
+    const lines = [...classes]
+      .sort((a, b) => (a.period || 0) - (b.period || 0))
+      .map((cls) => {
+        const { pct } = classCompletion(cls.id);
+        return `• ${cls.name}: ${pct}%`;
+      });
+    return `Semester finish lines:\n${lines.join("\n")}`;
   }
 
   function todayBudgetMinutes(assignment) {
@@ -1388,6 +1769,15 @@
         els.backlogList.appendChild(li);
       }
     }
+    if (els.tonightPeek) {
+      const next = state.plan.find((b) => b.type === "work");
+      const n = state.plan.filter((b) => b.type === "work").length;
+      els.tonightPeek.textContent = next
+        ? `${n} block${n === 1 ? "" : "s"} · next: ${next.detail}`
+        : openAssignments().length
+          ? "Nothing in tonight’s window"
+          : "No assignments yet";
+    }
     renderProgress();
   }
 
@@ -1611,12 +2001,28 @@
     return "Tap Add Homework to enter an assignment — I’ll schedule it around your day.";
   }
 
-  function handleUserMessage(text) {
+  async function handleUserMessage(text) {
     const cleaned = text.trim();
     if (!cleaned) return;
     addMessage("user", cleaned);
-    const reply = replyTo(cleaned);
-    if (reply) window.setTimeout(() => addMessage("bot", reply), 180);
+    try {
+      const interpretation = await interpretMessage(cleaned);
+      let reply = await handleInterpretation(interpretation, cleaned);
+      if (!reply) {
+        // Legacy keyword path as safety net for edge phrases.
+        reply = replyTo(cleaned);
+      }
+      if (reply) window.setTimeout(() => addMessage("bot", reply), 160);
+    } catch (err) {
+      window.setTimeout(
+        () =>
+          addMessage(
+            "bot",
+            "Something went wrong reading that — try again, or use Add precisely."
+          ),
+        160
+      );
+    }
   }
 
   function greet() {
@@ -1631,12 +2037,12 @@
     if (openAssignments().length && state.plan.some((b) => b.type === "work")) {
       addMessage(
         "bot",
-        `Hey ${name}. Here’s where things stand.\n\n${formatPlanText()}`
+        `Hey ${name}. ${nextActionLine()}\n\nTell me if anything new got assigned, or if you finished something.`
       );
     } else {
       addMessage(
         "bot",
-        `Hey ${name}. When you get homework, tap Add Homework — I’ll fit it around your schedule and keep adjusting your plan.`
+        `Hey ${name}. Tell me what you’ve got — like “bio quiz tomorrow” or “calc test Friday and a Lit essay due Wednesday” — and I’ll set up tonight.`
       );
     }
   }
@@ -1756,7 +2162,7 @@
     els.messages.innerHTML = "";
     addMessage(
       "bot",
-      `You’re set, ${state.profile.name}. Your classes and homework window are saved.\n\nTap Add Homework to enter assignments — I’ll build today’s plan around your schedule. Ask “what’s next?” anytime.`
+      `You’re set, ${state.profile.name}. Tell me what you’ve been assigned and I’ll build tonight’s plan. Add precisely is there if you want the form.`
     );
     els.input?.focus();
   });
@@ -1791,7 +2197,17 @@
     setMusicVolume(Number(els.musicVolume.value));
   });
 
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {
+        /* offline install optional during local file:// opens */
+      });
+    });
+  }
+
   load();
   greet();
   if (state.profile) els.input?.focus();
+  registerServiceWorker();
 })();

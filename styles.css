@@ -95,10 +95,14 @@ body {
 .class-progress {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  max-width: min(100%, 360px);
-  max-height: 11rem;
+  gap: 0.35rem;
+  max-width: min(100%, 320px);
+  max-height: 7.5rem;
   overflow-y: auto;
+}
+
+.app.bot-first .class-progress {
+  opacity: 0.95;
 }
 
 .class-bar {
@@ -174,13 +178,19 @@ body {
 .main {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(240px, 0.9fr);
+  grid-template-columns: minmax(0, 1.9fr) minmax(220px, 0.75fr);
   gap: 1rem;
   min-height: 0;
 }
 
+.app.bot-first .main {
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+}
+
 .chat-panel,
-.plan-panel {
+.plan-panel,
+.support-panel,
+.tonight-drawer {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -191,8 +201,72 @@ body {
 .chat-panel {
   display: flex;
   flex-direction: column;
-  min-height: 62vh;
+  min-height: 70vh;
   overflow: hidden;
+}
+
+.app.bot-first .chat-panel {
+  min-height: min(78vh, 720px);
+}
+
+.support-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.tonight-drawer {
+  padding: 0;
+  overflow: hidden;
+}
+
+.tonight-drawer > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  font-family: var(--font-brand);
+  font-size: 1.1rem;
+  font-weight: 600;
+  user-select: none;
+}
+
+.tonight-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tonight-peek {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.tonight-body {
+  padding: 0 1rem 1.1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.85rem;
+}
+
+.fallback-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.15rem 0.1rem;
+}
+
+.fallback-controls .focus-music {
+  margin-left: 0;
+  width: 100%;
+  border-radius: 14px;
+  justify-content: flex-start;
 }
 
 .messages {
@@ -282,14 +356,16 @@ body {
   min-height: 0;
 }
 
-.plan-panel h2 {
+.plan-panel h2,
+.tonight-drawer h3 {
   margin: 0;
   font-family: var(--font-brand);
   font-size: 1.25rem;
   font-weight: 600;
 }
 
-.plan-panel h3 {
+.plan-panel h3,
+.tonight-body h3 {
   margin: 0 0 0.45rem;
   font-family: var(--font-ui);
   font-size: 0.78rem;
@@ -930,12 +1006,20 @@ body {
     order: 1;
     min-height: 0;
     flex: 1 1 auto;
-    height: min(58dvh, 520px);
+    height: min(62dvh, 560px);
   }
 
-  .plan-panel {
+  .app.bot-first .chat-panel {
+    height: min(68dvh, 600px);
+  }
+
+  .plan-panel,
+  .support-panel {
     order: 2;
-    padding: 0.9rem 0.85rem 1rem;
+  }
+
+  .tonight-body {
+    padding: 0.75rem 0.85rem 0.95rem;
   }
 
   .messages {
