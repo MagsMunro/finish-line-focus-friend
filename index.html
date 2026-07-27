@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Finish Line Friend</title>
+    <meta
+      name="description"
+      content="Tell Finish Line Friend what you’ve got — it plans tonight and keeps you moving toward 100%."
+    />
+    <meta name="theme-color" content="#3f6f68" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Finish Line Friend" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -19,7 +31,7 @@
         <p class="setup-brand">Finish Line Friend</p>
         <h1>Let’s get you set up</h1>
         <p class="setup-lead">
-          A few details about your classes and schedule — then we’ll build plans around your real day.
+          A few details about your classes and schedule — then you can just tell Finish Line Friend what you’ve got.
         </p>
 
         <form id="setup-form" class="setup-form">
@@ -88,11 +100,11 @@
       </div>
     </div>
 
-    <div id="app-shell" class="app" hidden>
+    <div id="app-shell" class="app bot-first" hidden>
       <header class="top-bar">
         <div class="brand">
           <p class="brand-name">Finish Line Friend</p>
-          <p class="brand-sub">Tell it what you have to do — it figures out when, and keeps adjusting until you hit 100%</p>
+          <p class="brand-sub">Tell me what you’ve got — I’ll figure out tonight.</p>
         </div>
         <div
           id="class-progress"
@@ -101,20 +113,6 @@
           aria-label="Semester finish line by class"
         ></div>
       </header>
-
-      <div class="toolbar">
-        <button type="button" id="add-homework-btn" class="btn-primary">Add Homework</button>
-        <button type="button" id="edit-setup-btn" class="btn-ghost">Edit schedule</button>
-        <div class="focus-music" aria-label="Focus Music">
-          <span class="focus-music-label">Focus Music</span>
-          <button type="button" id="music-toggle" class="btn-music" aria-pressed="false">Play</button>
-          <label class="music-volume">
-            <span class="sr-only">Volume</span>
-            <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.35" disabled />
-          </label>
-          <span class="focus-music-note">Local calm tone · off by default</span>
-        </div>
-      </div>
 
       <main class="main">
         <section class="chat-panel" aria-label="Chat with Finish Line Friend">
@@ -125,31 +123,50 @@
               id="chat-input"
               type="text"
               autocomplete="off"
-              placeholder="What’s next? I’m behind. I only have 45 minutes…"
+              placeholder="I have a calc test Friday and a Lit essay due Wednesday…"
             />
             <button type="submit">Send</button>
           </form>
         </section>
 
-        <aside class="plan-panel" aria-label="Today’s Plan">
-          <h2>Today’s Plan</h2>
-          <p class="plan-hint">
-            Check off work as you finish it. Your plan reshuffles when deadlines, time, or remaining work change.
-          </p>
-          <ol id="plan-list" class="plan-list"></ol>
-          <p id="empty-plan" class="empty-plan">
-            No plan yet. Tap <strong>Add Homework</strong> to enter an assignment.
-          </p>
+        <aside class="support-panel" aria-label="Plan and tools">
+          <details id="tonight-drawer" class="tonight-drawer">
+            <summary>
+              <span>Tonight’s plan</span>
+              <span id="tonight-peek" class="tonight-peek muted"></span>
+            </summary>
+            <div class="tonight-body">
+              <p class="plan-hint">
+                Check off work as you finish it. Your plan reshuffles when deadlines, time, or remaining work change.
+              </p>
+              <ol id="plan-list" class="plan-list"></ol>
+              <p id="empty-plan" class="empty-plan">
+                Nothing scheduled yet — tell Finish Line Friend what you’ve got.
+              </p>
+              <div id="backlog" class="backlog" hidden>
+                <h3>Later this week</h3>
+                <ul id="backlog-list" class="backlog-list"></ul>
+              </div>
+            </div>
+          </details>
 
-          <div id="backlog" class="backlog" hidden>
-            <h3>Later this week</h3>
-            <ul id="backlog-list" class="backlog-list"></ul>
+          <div class="fallback-controls">
+            <button type="button" id="add-homework-btn" class="btn-secondary">Add precisely</button>
+            <button type="button" id="edit-setup-btn" class="btn-ghost">Edit schedule</button>
+            <div class="focus-music" aria-label="Focus Music">
+              <span class="focus-music-label">Focus Music</span>
+              <button type="button" id="music-toggle" class="btn-music" aria-pressed="false">Play</button>
+              <label class="music-volume">
+                <span class="sr-only">Volume</span>
+                <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.35" disabled />
+              </label>
+            </div>
           </div>
         </aside>
       </main>
     </div>
 
-    <!-- Add Homework -->
+    <!-- Add Homework (fallback) -->
     <div id="hw-modal" class="modal" hidden>
       <div class="modal-backdrop" data-close-modal></div>
       <div class="modal-card" role="dialog" aria-labelledby="hw-modal-title" aria-modal="true">
@@ -203,6 +220,7 @@
       </div>
     </div>
 
-    <script src="app.js?v=19"></script>
+    <script src="interpreter.js?v=2"></script>
+    <script src="app.js?v=22"></script>
   </body>
 </html>
